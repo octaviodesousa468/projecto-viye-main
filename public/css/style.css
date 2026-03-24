@@ -1,0 +1,55 @@
+*{
+    
+    font-family: "Montserrat Alternates", sans-serif;
+}
+body{
+    background: linear-gradient(45deg,  #002168, #3676ff );
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.painel div{
+    background-color: white;
+    padding: 80px;
+    width: 250px;
+    border-radius: 25px;
+    box-shadow: rgb(112, 112, 112);
+    
+}
+
+.login img{
+    text-align: center;
+    margin-bottom: 20px;
+    margin-left: 30px;
+    width: 200px;
+    height: 150px;
+}
+.login input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    margin-bottom: 15px;
+    border-radius: 5px;
+}
+
+button{
+    font-size: 16px;
+    text-align: center;
+    width: 110%;
+    padding: 15px;
+    border-radius: 30px;
+    background-color: #ff7729;
+    cursor: pointer;
+    color: white;
+}
+button:hover{
+    background-color: #ff8843;
+}
+.cadastro{
+    margin-left: 50px;
+}
+.cadastro a{
+text-decoration: none;
+color:  #ff7729;
+}

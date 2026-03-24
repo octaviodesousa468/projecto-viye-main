@@ -1,0 +1,96 @@
+/* SIDEBAR */
+.sidebar a {
+    color: white;
+    text-decoration: none;
+    display: block;
+    width: 100%;
+    margin-right: 16px;
+    
+    
+}
+
+.sidebar li {
+    padding: 14px;
+    border-radius: 6px;
+    
+}
+
+.sidebar li:hover,
+.sidebar .active {
+    background: #1f2937;
+    
+}
+
+.sidebar {
+    width: 240px;
+    height: 100vh;
+    background:linear-gradient(45deg, #002168, #3676ff);
+    color: #fff;
+    padding: 20px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+    z-index: 1000;
+    border-right: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    isolation: isolate;
+}
+
+.sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.2), transparent 45%),
+        radial-gradient(circle at 80% 75%, rgba(255, 255, 255, 0.12), transparent 50%),
+        repeating-linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.07) 0px,
+            rgba(255, 255, 255, 0.07) 1px,
+            transparent 1px,
+            transparent 9px
+        );
+    mix-blend-mode: screen;
+}
+
+.sidebar > * {
+    position: relative;
+    z-index: 1;
+}
+
+.logo {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.sidebar ul {
+    list-style: none;
+}
+
+.sidebar ul li {
+    padding: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 17px;
+    transition: .3s;
+}
+
+.sidebar ul li i {
+    margin-right: 10px;
+}
+
+.sidebar ul li:hover,
+.sidebar ul .active {
+      
+      background: #1f2937;
+}
+
+.content {
+    margin-left: 240px;
+    width: calc(100% - 240px);
+}
