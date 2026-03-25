@@ -43,7 +43,7 @@
                 @if ($isEdit)
                     <div class="input-group">
                         <label>Email do Professor</label>
-                        <input type="email" name="email_professor" value="{{ old('email_professor', data_get($professor, 'email_professor')) }}">
+                        <input type="email" name="email_professor" value="{{ old('email_professor', data_get($professor, 'email_professor', data_get($professor, 'email_encarregado', data_get($professor, 'email')))) }}">
                     </div>
                     <div class="input-group">
                         <label>Status de Acesso</label>
@@ -89,4 +89,3 @@
     <script src="{{ asset('js/sidebar-gradient.js') }}"></script>
 </body>
 </html>
-

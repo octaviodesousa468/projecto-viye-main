@@ -58,14 +58,53 @@ $buscarAcessoPorIdentificador = function (string $tabela, string $identificador)
     return null;
 };
 
-$chatUsuarioAutorizado = function (?string $email): bool {
+$obterColunaEmailAcessoProfessor = function (): ?string {
+    if (!Schema::hasTable('acesso_professor')) {
+        return null;
+    }
+
+    foreach (['email_encarregado', 'email'] as $coluna) {
+        if (Schema::hasColumn('acesso_professor', $coluna)) {
+            return $coluna;
+        }
+    }
+
+    return null;
+};
+
+$obterColunaSenhaAcessoProfessor = function (): ?string {
+    if (!Schema::hasTable('acesso_professor')) {
+        return null;
+    }
+
+    foreach (['password', 'palavrapasse', 'senha', 'passwork'] as $coluna) {
+        if (Schema::hasColumn('acesso_professor', $coluna)) {
+            return $coluna;
+        }
+    }
+
+    return null;
+};
+
+$chatUsuarioAutorizado = function (?string $email) use ($obterColunaEmailAcessoProfessor): bool {
     if (empty($email)) {
         return false;
     }
 
+    $emailNormalizado = mb_strtolower(trim((string) $email));
+
+    if (Schema::hasTable('acesso')) {
+        $queryAcessoGeralAluno = DB::table('acesso')
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$emailNormalizado]);
+
+        if ($queryAcessoGeralAluno->exists()) {
+            return true;
+        }
+    }
+
     $existeAluno = false;
     if (Schema::hasTable('acesso_aluno')) {
-        $queryAluno = DB::table('acesso_aluno')->where('email_encarregado', $email);
+        $queryAluno = DB::table('acesso_aluno')->whereRaw('LOWER(TRIM(email_encarregado)) = ?', [$emailNormalizado]);
         if (Schema::hasColumn('acesso_aluno', 'acesso')) {
             $queryAluno->where('acesso', 'ativo');
         }
@@ -79,8 +118,8 @@ $chatUsuarioAutorizado = function (?string $email): bool {
     $existeAdmin = false;
     if (Schema::hasTable('acesso_admin')) {
         $queryAdmin = Schema::hasColumn('acesso_admin', 'email_encarregado')
-            ? DB::table('acesso_admin')->where('email_encarregado', $email)
-            : DB::table('acesso_admin')->where('email', $email);
+            ? DB::table('acesso_admin')->whereRaw('LOWER(TRIM(email_encarregado)) = ?', [$emailNormalizado])
+            : DB::table('acesso_admin')->whereRaw('LOWER(TRIM(email)) = ?', [$emailNormalizado]);
 
         if (Schema::hasColumn('acesso_admin', 'acesso')) {
             $queryAdmin->where('acesso', 'ativo');
@@ -97,7 +136,13 @@ $chatUsuarioAutorizado = function (?string $email): bool {
         return false;
     }
 
-    $queryProfessor = DB::table('acesso_professor')->where('email_encarregado', $email);
+    $colunaEmailProfessor = $obterColunaEmailAcessoProfessor();
+    if (!$colunaEmailProfessor) {
+        return false;
+    }
+
+    $queryProfessor = DB::table('acesso_professor')
+        ->whereRaw('LOWER(TRIM(' . $colunaEmailProfessor . ')) = ?', [$emailNormalizado]);
     if (Schema::hasColumn('acesso_professor', 'acesso')) {
         $queryProfessor->where('acesso', 'ativo');
     }
@@ -105,11 +150,39 @@ $chatUsuarioAutorizado = function (?string $email): bool {
     return $queryProfessor->exists();
 };
 
-$chatListaContatos = function (string $meuEmail) {
+$chatListaContatos = function (string $meuEmail) use ($obterColunaEmailAcessoProfessor) {
     $contatos = collect();
+    $meuEmailNormalizado = mb_strtolower(trim($meuEmail));
+
+    if (Schema::hasTable('acesso') && Schema::hasColumn('acesso', 'email')) {
+        $queryAcessoGeralAlunos = DB::table('acesso as ag')
+            ->select('ag.email as email')
+            ->addSelect(DB::raw("'' as nome"));
+
+        if (Schema::hasColumn('acesso', 'aluno_id')) {
+            $queryAcessoGeralAlunos->addSelect(DB::raw("CASE WHEN ag.aluno_id IS NULL THEN 'professor' ELSE 'aluno' END as tipo"));
+        } else {
+            $queryAcessoGeralAlunos->addSelect(DB::raw("'aluno' as tipo"));
+        }
+
+        if (Schema::hasColumn('acesso', 'aluno_id')) {
+            if (Schema::hasTable('aluno') && Schema::hasColumn('aluno', 'id') && Schema::hasColumn('aluno', 'nome')) {
+                $queryAcessoGeralAlunos
+                    ->leftJoin('aluno as a', 'a.id', '=', 'ag.aluno_id')
+                    ->addSelect('a.nome as nome');
+            }
+        }
+
+        $contatos = $contatos->concat($queryAcessoGeralAlunos->get());
+    }
 
     if (Schema::hasTable('acesso_aluno')) {
         $queryAluno = DB::table('acesso_aluno')->select('email_encarregado as email', DB::raw("'aluno' as tipo"));
+        if (Schema::hasColumn('acesso_aluno', 'perfil_aluno')) {
+            $queryAluno->addSelect('perfil_aluno as nome');
+        } else {
+            $queryAluno->addSelect(DB::raw("'' as nome"));
+        }
         if (Schema::hasColumn('acesso_aluno', 'acesso')) {
             $queryAluno->where('acesso', 'ativo');
         }
@@ -117,11 +190,27 @@ $chatListaContatos = function (string $meuEmail) {
     }
 
     if (Schema::hasTable('acesso_professor')) {
-        $queryProfessor = DB::table('acesso_professor')->select('email_encarregado as email', DB::raw("'professor' as tipo"));
-        if (Schema::hasColumn('acesso_professor', 'acesso')) {
-            $queryProfessor->where('acesso', 'ativo');
+        $colunaEmailProfessor = $obterColunaEmailAcessoProfessor();
+        if ($colunaEmailProfessor) {
+            $queryProfessor = DB::table('acesso_professor as ap')
+                ->select('ap.' . $colunaEmailProfessor . ' as email', DB::raw("'professor' as tipo"))
+                ->addSelect(DB::raw("'' as nome"));
+
+            if (Schema::hasTable('professor') && Schema::hasColumn('professor', 'email') && Schema::hasColumn('professor', 'nome') && $colunaEmailProfessor === 'email_encarregado') {
+                $queryProfessor
+                    ->leftJoin('professor as p', 'p.email', '=', 'ap.email_encarregado')
+                    ->addSelect('p.nome as nome');
+            } elseif (Schema::hasTable('professor') && Schema::hasColumn('professor', 'email') && Schema::hasColumn('professor', 'nome') && $colunaEmailProfessor === 'email') {
+                $queryProfessor
+                    ->leftJoin('professor as p', 'p.email', '=', 'ap.email')
+                    ->addSelect('p.nome as nome');
+            }
+
+            if (Schema::hasColumn('acesso_professor', 'acesso')) {
+                $queryProfessor->where('ap.acesso', 'ativo');
+            }
+            $contatos = $contatos->concat($queryProfessor->get());
         }
-        $contatos = $contatos->concat($queryProfessor->get());
     }
 
     if (Schema::hasTable('acesso_admin')) {
@@ -129,6 +218,11 @@ $chatListaContatos = function (string $meuEmail) {
             $queryAdmin = DB::table('acesso_admin')->select('email_encarregado as email', DB::raw("'admin' as tipo"));
         } else {
             $queryAdmin = DB::table('acesso_admin')->select('email as email', DB::raw("'admin' as tipo"));
+        }
+        if (Schema::hasColumn('acesso_admin', 'nome')) {
+            $queryAdmin->addSelect('nome');
+        } else {
+            $queryAdmin->addSelect(DB::raw("'' as nome"));
         }
 
         if (Schema::hasColumn('acesso_admin', 'acesso')) {
@@ -139,8 +233,19 @@ $chatListaContatos = function (string $meuEmail) {
     }
 
     return $contatos
+        ->map(function ($item) {
+            $email = mb_strtolower(trim((string) data_get($item, 'email', '')));
+            $item->email = $email;
+            $nome = trim((string) data_get($item, 'nome', ''));
+            if ($nome === '') {
+                $nome = $email !== '' ? strstr($email, '@', true) ?: $email : '';
+            }
+            $item->nome = $nome;
+            return $item;
+        })
+        ->filter(fn ($item) => data_get($item, 'email') !== '')
         ->unique('email')
-        ->reject(fn ($item) => data_get($item, 'email') === $meuEmail)
+        ->reject(fn ($item) => data_get($item, 'email') === $meuEmailNormalizado)
         ->values();
 };
 
@@ -280,6 +385,16 @@ $obterListaTurmas = function () use ($obterTabelaTurmas, $obterPrimeiraColunaExi
         ->values();
 };
 
+$contarRegistosTabela = function (array $tabelas): int {
+    foreach ($tabelas as $tabela) {
+        if (Schema::hasTable($tabela)) {
+            return (int) DB::table($tabela)->count();
+        }
+    }
+
+    return 0;
+};
+
 Route::get('/', function (\Illuminate\Http\Request $request) {
     $request->session()->regenerateToken();
 
@@ -315,7 +430,14 @@ Route::post('/login', function (\Illuminate\Http\Request $request) use ($buscarA
             return false;
         }
 
-        return Hash::check($senhaDigitada, $senhaBanco) || hash_equals($senhaBanco, $senhaDigitada);
+        $senhaBanco = (string) $senhaBanco;
+        $infoHash = password_get_info($senhaBanco);
+
+        if (($infoHash['algoName'] ?? 'unknown') !== 'unknown') {
+            return Hash::check($senhaDigitada, $senhaBanco);
+        }
+
+        return hash_equals($senhaBanco, $senhaDigitada);
     };
 
     $obterSenhaRegistro = function ($registro): ?string {
@@ -537,20 +659,19 @@ Route::get('/telaprofessor/notificacoes', function () {
     return view('telaprofessor', ['aba' => 'notificacoes', 'noticias' => $noticias]);
 })->name('telaprofessor.notificacoes');
 
-Route::get('/telaprofessor/chat', function () use ($chatUsuarioAutorizado, $chatListaContatos) {
+Route::get('/telaprofessor/chat', function () use ($chatUsuarioAutorizado, $chatListaContatos, $obterTabelaTurmas) {
     $meuEmail = strtolower(trim((string) session('user_email', '')));
     abort_unless($chatUsuarioAutorizado($meuEmail), 403, 'Acesso nao autorizado ao chat.');
 
     $contatos = $chatListaContatos($meuEmail);
     $emailsAlunosDaTurma = collect();
+    $tabelaTurmas = $obterTabelaTurmas();
 
     if (
         Schema::hasTable('professor')
-        && Schema::hasTable('turmas')
+        && $tabelaTurmas
         && Schema::hasTable('aluno')
-        && Schema::hasTable('acesso_aluno')
-        && Schema::hasColumn('acesso_aluno', 'perfil_aluno')
-        && Schema::hasColumn('acesso_aluno', 'email_encarregado')
+        && (Schema::hasTable('acesso') || Schema::hasTable('acesso_aluno'))
     ) {
         $nomeSessao = trim((string) session('user_nome', ''));
         $loginSessao = trim((string) session('user_login', ''));
@@ -576,18 +697,18 @@ Route::get('/telaprofessor/chat', function () use ($chatUsuarioAutorizado, $chat
 
         $turmaProfessor = null;
         $nomeProfessor = trim((string) data_get($professorPerfil, 'nome', ''));
-        if ($professorPerfil && Schema::hasColumn('turma', 'id_professor')) {
+        if ($professorPerfil && Schema::hasColumn($tabelaTurmas, 'id_professor')) {
             $idProfessor = (int) data_get($professorPerfil, 'id', 0);
             if ($idProfessor > 0) {
-                $turmaProfessor = DB::table('turma')
+                $turmaProfessor = DB::table($tabelaTurmas)
                     ->where('id_professor', $idProfessor)
                     ->orderBy('nome_turma')
                     ->first();
             }
         }
 
-        if (!$turmaProfessor && $nomeProfessor !== '' && Schema::hasColumn('turma', 'professor')) {
-            $turmaProfessor = DB::table('turma')
+        if (!$turmaProfessor && $nomeProfessor !== '' && Schema::hasColumn($tabelaTurmas, 'professor')) {
+            $turmaProfessor = DB::table($tabelaTurmas)
                 ->whereRaw('LOWER(TRIM(professor)) = ?', [mb_strtolower($nomeProfessor)])
                 ->orderBy('nome_turma')
                 ->first();
@@ -597,25 +718,36 @@ Route::get('/telaprofessor/chat', function () use ($chatUsuarioAutorizado, $chat
             $colunasAluno = Schema::getColumnListing('aluno');
             $queryAlunosTurma = DB::table('aluno');
 
-            if (in_array('turma_id', $colunasAluno, true)) {
+            if (in_array('id_turma', $colunasAluno, true)) {
+                $queryAlunosTurma->where('id_turma', (int) data_get($turmaProfessor, 'id'));
+            } elseif (in_array('turma_id', $colunasAluno, true)) {
                 $queryAlunosTurma->where('turma_id', (int) data_get($turmaProfessor, 'id'));
             } elseif (in_array('turma', $colunasAluno, true)) {
                 $queryAlunosTurma->where('turma', (string) data_get($turmaProfessor, 'nome_turma', ''));
             }
 
-            $nomesAlunosTurma = $queryAlunosTurma
-                ->when(
-                    in_array('nome', $colunasAluno, true),
-                    fn ($q) => $q->select('nome'),
-                    fn ($q) => $q->selectRaw("'' as nome")
-                )
-                ->get()
-                ->pluck('nome')
-                ->map(fn ($nome) => trim((string) $nome))
-                ->filter()
-                ->values();
+            $idsAlunosTurma = in_array('id', $colunasAluno, true)
+                ? (clone $queryAlunosTurma)->pluck('id')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()
+                : collect();
 
-            if ($nomesAlunosTurma->isNotEmpty()) {
+            $nomesAlunosTurma = in_array('nome', $colunasAluno, true)
+                ? (clone $queryAlunosTurma)->pluck('nome')->map(fn ($nome) => trim((string) $nome))->filter()->values()
+                : collect();
+
+            if (Schema::hasTable('acesso') && Schema::hasColumn('acesso', 'email') && Schema::hasColumn('acesso', 'aluno_id') && $idsAlunosTurma->isNotEmpty()) {
+                $emailsAlunosDaTurma = DB::table('acesso')
+                    ->whereIn('aluno_id', $idsAlunosTurma)
+                    ->pluck('email')
+                    ->map(fn ($email) => strtolower(trim((string) $email)))
+                    ->filter()
+                    ->unique()
+                    ->values();
+            } elseif (
+                Schema::hasTable('acesso_aluno')
+                && Schema::hasColumn('acesso_aluno', 'perfil_aluno')
+                && Schema::hasColumn('acesso_aluno', 'email_encarregado')
+                && $nomesAlunosTurma->isNotEmpty()
+            ) {
                 $emailsAlunosDaTurma = DB::table('acesso_aluno')
                     ->whereIn('perfil_aluno', $nomesAlunosTurma)
                     ->when(
@@ -705,14 +837,15 @@ Route::get('/telaaluno/chat', function () use ($chatUsuarioAutorizado, $chatList
 })->name('telaaluno.chat');
 
 Route::get('/chat/mensagens', function (\Illuminate\Http\Request $request) use ($chatUsuarioAutorizado) {
-    $meuEmail = (string) session('user_email', '');
+    $meuEmail = mb_strtolower(trim((string) session('user_email', '')));
     abort_unless($chatUsuarioAutorizado($meuEmail), 403, 'Acesso nao autorizado ao chat.');
 
     $dados = $request->validate([
-        'contato' => ['required', 'email'],
+        'contato' => ['required', 'string', 'max:255'],
     ]);
 
-    $contato = $dados['contato'];
+    $contato = mb_strtolower(trim((string) $dados['contato']));
+    abort_unless($contato !== '', 422, 'Contato invalido.');
     abort_unless($chatUsuarioAutorizado($contato), 403, 'Contato sem acesso ativo.');
 
     if (!Schema::hasTable('chat_mensagens')) {
@@ -721,12 +854,12 @@ Route::get('/chat/mensagens', function (\Illuminate\Http\Request $request) use (
 
     $mensagens = DB::table('chat_mensagens')
         ->where(function ($query) use ($meuEmail, $contato) {
-            $query->where('remetente_email', $meuEmail)
-                ->where('destinatario_email', $contato);
+            $query->whereRaw('LOWER(TRIM(remetente_email)) = ?', [$meuEmail])
+                ->whereRaw('LOWER(TRIM(destinatario_email)) = ?', [$contato]);
         })
         ->orWhere(function ($query) use ($meuEmail, $contato) {
-            $query->where('remetente_email', $contato)
-                ->where('destinatario_email', $meuEmail);
+            $query->whereRaw('LOWER(TRIM(remetente_email)) = ?', [$contato])
+                ->whereRaw('LOWER(TRIM(destinatario_email)) = ?', [$meuEmail]);
         })
         ->orderBy('created_at')
         ->limit(200)
@@ -736,22 +869,25 @@ Route::get('/chat/mensagens', function (\Illuminate\Http\Request $request) use (
 })->name('chat.fetch');
 
 Route::post('/chat/mensagens', function (\Illuminate\Http\Request $request) use ($chatUsuarioAutorizado) {
-    $meuEmail = (string) session('user_email', '');
+    $meuEmail = mb_strtolower(trim((string) session('user_email', '')));
     abort_unless($chatUsuarioAutorizado($meuEmail), 403, 'Acesso nao autorizado ao chat.');
 
     $dados = $request->validate([
-        'destinatario_email' => ['required', 'email'],
+        'destinatario_email' => ['required', 'string', 'max:255'],
         'mensagem' => ['required', 'string', 'max:1000'],
     ]);
 
-    $destinatario = $dados['destinatario_email'];
+    $destinatario = mb_strtolower(trim((string) $dados['destinatario_email']));
+    $mensagem = trim((string) $dados['mensagem']);
+    abort_unless($destinatario !== '', 422, 'Destinatario invalido.');
+    abort_unless($mensagem !== '', 422, 'Mensagem invalida.');
     abort_unless($chatUsuarioAutorizado($destinatario), 403, 'Destinatario sem acesso ativo.');
     abort_unless(Schema::hasTable('chat_mensagens'), 500, 'Tabela de mensagens nao encontrada. Execute as migrations.');
 
     DB::table('chat_mensagens')->insert([
         'remetente_email' => $meuEmail,
         'destinatario_email' => $destinatario,
-        'mensagem' => trim($dados['mensagem']),
+        'mensagem' => $mensagem,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
@@ -818,22 +954,11 @@ Route::get('/telaaluno/perfil', function () {
     return view('telaaluno_perfil');
 })->name('telaaluno.perfil');
 
-Route::get('/dashboard', function () {
-    $totalAlunos = Schema::hasTable('aluno')
-        ? DB::table('aluno')->count()
-        : 0;
-
-    $totalProfessores = Schema::hasTable('professor')
-        ? DB::table('professor')->count()
-        : 0;
-
-    $totalTurmas = Schema::hasTable('turmas')
-        ? DB::table('turmas')->count()
-        : 0;
-
-    $totalFuncionarios = Schema::hasTable('funcionario')
-        ? DB::table('funcionario')->count()
-        : 0;
+Route::get('/dashboard', function () use ($contarRegistosTabela) {
+    $totalAlunos = $contarRegistosTabela(['aluno', 'alunos']);
+    $totalProfessores = $contarRegistosTabela(['professor', 'professores']);
+    $totalTurmas = $contarRegistosTabela(['turma', 'turmas']);
+    $totalFuncionarios = $contarRegistosTabela(['funcionario', 'funcionarios']);
 
     return view('dashboard', compact('totalAlunos', 'totalProfessores', 'totalTurmas', 'totalFuncionarios'));
 })->name('dashboard');
@@ -1317,18 +1442,16 @@ Route::delete('/academia/administradores/{id}', function (int $id) {
 Route::get('/academia/acesso-alunos', function (\Illuminate\Http\Request $request) {
     $q = trim((string) $request->query('q', ''));
 
-    if (!Schema::hasTable('acesso_aluno')) {
+    if (!Schema::hasTable('acesso')) {
         return view('academia_acesso_alunos', ['alunos' => collect(), 'q' => $q]);
     }
 
-    $query = DB::table('acesso_aluno');
+    $query = DB::table('acesso')
+        ->whereNotNull('aluno_id')
+        ->select('id', 'email as email_encarregado', 'aluno_id', DB::raw("'ativo' as acesso"), DB::raw('NULL as created_at'));
     if ($q !== '') {
         $query->where(function ($subQuery) use ($q) {
-            $subQuery->where('email_encarregado', 'like', "%{$q}%");
-
-            if (Schema::hasColumn('acesso_aluno', 'acesso')) {
-                $subQuery->orWhere('acesso', 'like', "%{$q}%");
-            }
+            $subQuery->where('email', 'like', "%{$q}%");
         });
     }
 
@@ -1350,30 +1473,43 @@ Route::get('/academia/acesso-alunos/criar', function () {
 })->name('academia.acesso_alunos.create');
 
 Route::post('/academia/acesso-alunos', function (\Illuminate\Http\Request $request) {
+    abort_if(!Schema::hasTable('acesso'), 500, 'Tabela acesso nao encontrada.');
+
     $regras = [
-        'email_encarregado' => ['required', 'email', 'max:255', 'unique:acesso_aluno,email_encarregado'],
+        'email_encarregado' => ['required', 'email', 'max:255', 'unique:acesso,email'],
         'password' => ['required', 'string', 'min:6'],
-        'perfil_aluno' => ['nullable', 'string', 'max:60'],
+        'perfil_aluno' => ['required', 'string', 'max:60'],
     ];
     if (Schema::hasTable('aluno')) {
         $regras['perfil_aluno'][] = Rule::exists('aluno', 'nome');
     }
     $dados = $request->validate($regras);
 
-    DB::table('acesso_aluno')->insert([
-        'email_encarregado' => $dados['email_encarregado'],
-        'password' => Hash::make($dados['password']),
-        'perfil_aluno' => !empty($dados['perfil_aluno']) ? trim((string) $dados['perfil_aluno']) : null,
-        'acesso' => 'ativo',
-        'created_at' => now(),
-        'updated_at' => now(),
+    $alunoId = null;
+    if (Schema::hasTable('aluno')) {
+        $aluno = DB::table('aluno')
+            ->whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim((string) $dados['perfil_aluno']))])
+            ->first();
+        $alunoId = (int) data_get($aluno, 'id', 0);
+    }
+
+    if ($alunoId <= 0) {
+        return redirect()->route('academia.acesso_alunos.create')
+            ->withInput()
+            ->with('error', 'Nao foi possivel localizar o aluno selecionado.');
+    }
+
+    DB::table('acesso')->insert([
+        'email' => strtolower(trim((string) $dados['email_encarregado'])),
+        'palavrapasse' => Hash::make((string) $dados['password']),
+        'aluno_id' => $alunoId,
     ]);
 
     return redirect()->route('academia.acesso_alunos')->with('success', 'Acesso de aluno criado com sucesso.');
 })->name('academia.acesso_alunos.store');
 
 Route::get('/academia/acesso-alunos/{id}/editar', function (int $id) {
-    $aluno = DB::table('acesso_aluno')->where('id', $id)->first();
+    $aluno = DB::table('acesso')->where('id', $id)->first();
     abort_if(!$aluno, 404);
 
     $perfisAluno = Schema::hasTable('aluno')
@@ -1388,12 +1524,11 @@ Route::get('/academia/acesso-alunos/{id}/editar', function (int $id) {
 })->name('academia.acesso_alunos.edit');
 
 Route::put('/academia/acesso-alunos/{id}', function (\Illuminate\Http\Request $request, int $id) {
-    $aluno = DB::table('acesso_aluno')->where('id', $id)->first();
+    $aluno = DB::table('acesso')->where('id', $id)->first();
     abort_if(!$aluno, 404);
 
     $regras = [
-        'email_encarregado' => ['required', 'email', 'max:255', Rule::unique('acesso_aluno', 'email_encarregado')->ignore($id)],
-        'acesso' => ['required', 'in:ativo,inativo'],
+        'email_encarregado' => ['required', 'email', 'max:255', Rule::unique('acesso', 'email')->ignore($id)],
         'password' => ['nullable', 'string', 'min:6'],
         'perfil_aluno' => ['nullable', 'string', 'max:60'],
     ];
@@ -1402,23 +1537,32 @@ Route::put('/academia/acesso-alunos/{id}', function (\Illuminate\Http\Request $r
     }
     $dados = $request->validate($regras);
 
-    $update = [
-        'email_encarregado' => $dados['email_encarregado'],
-        'acesso' => $dados['acesso'],
-        'perfil_aluno' => !empty($dados['perfil_aluno']) ? trim((string) $dados['perfil_aluno']) : null,
-        'updated_at' => now(),
-    ];
-    if (!empty($dados['password'])) {
-        $update['password'] = Hash::make($dados['password']);
+    $alunoId = (int) data_get($aluno, 'aluno_id', 0);
+    if (!empty($dados['perfil_aluno']) && Schema::hasTable('aluno')) {
+        $alunoPerfil = DB::table('aluno')
+            ->whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower(trim((string) $dados['perfil_aluno']))])
+            ->first();
+        $alunoId = (int) data_get($alunoPerfil, 'id', $alunoId);
     }
 
-    DB::table('acesso_aluno')->where('id', $id)->update($update);
+    $update = [
+        'email' => $dados['email_encarregado'],
+        'aluno_id' => $alunoId,
+    ];
+    if (Schema::hasColumn('acesso', 'updated_at')) {
+        $update['updated_at'] = now();
+    }
+    if (!empty($dados['password'])) {
+        $update['palavrapasse'] = Hash::make($dados['password']);
+    }
+
+    DB::table('acesso')->where('id', $id)->update($update);
 
     return redirect()->route('academia.acesso_alunos')->with('success', 'Acesso de aluno editado com sucesso.');
 })->name('academia.acesso_alunos.update');
 
 Route::delete('/academia/acesso-alunos/{id}', function (int $id) {
-    DB::table('acesso_aluno')->where('id', $id)->delete();
+    DB::table('acesso')->where('id', $id)->delete();
 
     return redirect()->route('academia.acesso_alunos')->with('success', 'Acesso de aluno removido com sucesso.');
 })->name('academia.acesso_alunos.destroy');
@@ -1903,20 +2047,56 @@ Route::post('/academia/turmas/{id}/alunos/notas', function (\Illuminate\Http\Req
     return redirect()->route('academia.turmas.lista', ['id' => $id])->with('success', 'Desempenho atualizado com sucesso.');
 })->whereNumber('id')->name('academia.turmas.alunos.notas');
 
-Route::get('/academia/acesso-professores', function (\Illuminate\Http\Request $request) {
+Route::get('/academia/acesso-professores', function (\Illuminate\Http\Request $request) use ($obterColunaEmailAcessoProfessor) {
     $q = trim((string) $request->query('q', ''));
 
     if (!Schema::hasTable('acesso_professor')) {
         return view('academia_acesso_professores', ['professores' => collect(), 'q' => $q]);
     }
 
-    $query = DB::table('acesso_professor');
+    $colunaEmailProfessor = $obterColunaEmailAcessoProfessor();
+    if (!$colunaEmailProfessor) {
+        return view('academia_acesso_professores', ['professores' => collect(), 'q' => $q]);
+    }
+
+    $query = DB::table('acesso_professor as ap')
+        ->select('ap.id', 'ap.' . $colunaEmailProfessor . ' as email_professor')
+        ->addSelect(
+            Schema::hasColumn('acesso_professor', 'nome')
+                ? 'ap.nome as nome_professor'
+                : DB::raw("'-' as nome_professor")
+        );
+
+    if (Schema::hasColumn('acesso_professor', 'acesso')) {
+        $query->addSelect('ap.acesso');
+    } else {
+        $query->addSelect(DB::raw("'ativo' as acesso"));
+    }
+
+    if (Schema::hasColumn('acesso_professor', 'created_at')) {
+        $query->addSelect('ap.created_at');
+    } else {
+        $query->addSelect(DB::raw('NULL as created_at'));
+    }
+
+    if (Schema::hasTable('professor') && Schema::hasColumn('professor', 'email') && Schema::hasColumn('professor', 'nome')) {
+        $query->leftJoin('professor as p', 'p.email', '=', 'ap.' . $colunaEmailProfessor);
+
+        if (!Schema::hasColumn('acesso_professor', 'nome')) {
+            $query->addSelect('p.nome as nome_professor');
+        }
+    }
+
     if ($q !== '') {
-        $query->where(function ($subQuery) use ($q) {
-            $subQuery->where('email_encarregado', 'like', "%{$q}%");
+        $query->where(function ($subQuery) use ($q, $colunaEmailProfessor) {
+            $subQuery->where('ap.' . $colunaEmailProfessor, 'like', "%{$q}%");
 
             if (Schema::hasColumn('acesso_professor', 'acesso')) {
-                $subQuery->orWhere('acesso', 'like', "%{$q}%");
+                $subQuery->orWhere('ap.acesso', 'like', "%{$q}%");
+            }
+
+            if (Schema::hasTable('professor') && Schema::hasColumn('professor', 'nome')) {
+                $subQuery->orWhere('p.nome', 'like', "%{$q}%");
             }
         });
     }
@@ -1938,7 +2118,14 @@ Route::get('/academia/acesso-professores/criar', function () {
     ]);
 })->name('academia.acesso_professores.create');
 
-Route::post('/academia/acesso-professores', function (\Illuminate\Http\Request $request) {
+Route::post('/academia/acesso-professores', function (\Illuminate\Http\Request $request) use ($obterColunaEmailAcessoProfessor, $obterColunaSenhaAcessoProfessor) {
+    abort_if(!Schema::hasTable('acesso_professor'), 500, 'Tabela acesso_professor nao encontrada.');
+
+    $colunaEmailProfessor = $obterColunaEmailAcessoProfessor();
+    $colunaSenhaProfessor = $obterColunaSenhaAcessoProfessor();
+    abort_if(!$colunaEmailProfessor, 500, 'Tabela acesso_professor sem coluna de email compativel.');
+    abort_if(!$colunaSenhaProfessor, 500, 'Tabela acesso_professor sem coluna de senha compativel.');
+
     if (!$request->filled('email_encarregado') && $request->filled('email_professor')) {
         $request->merge([
             'email_encarregado' => $request->input('email_professor'),
@@ -1946,17 +2133,29 @@ Route::post('/academia/acesso-professores', function (\Illuminate\Http\Request $
     }
 
     $dados = $request->validate([
-        'email_encarregado' => ['required', 'email', 'max:255', 'unique:acesso_professor,email_encarregado'],
+        'email_encarregado' => ['required', 'email', 'max:255', Rule::unique('acesso_professor', $colunaEmailProfessor)],
         'password' => ['required', 'string', 'min:6'],
     ]);
 
-    DB::table('acesso_professor')->insert([
-        'email_encarregado' => $dados['email_encarregado'],
-        'password' => Hash::make($dados['password']),
-        'acesso' => 'ativo',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
+    $payload = [
+        $colunaEmailProfessor => strtolower(trim((string) $dados['email_encarregado'])),
+        $colunaSenhaProfessor => (string) $dados['password'],
+    ];
+    if (Schema::hasColumn('acesso_professor', 'nome') && $request->filled('perfil_professor')) {
+        $payload['nome'] = trim((string) $request->input('perfil_professor'));
+    }
+
+    if (Schema::hasColumn('acesso_professor', 'acesso')) {
+        $payload['acesso'] = 'ativo';
+    }
+    if (Schema::hasColumn('acesso_professor', 'created_at')) {
+        $payload['created_at'] = now();
+    }
+    if (Schema::hasColumn('acesso_professor', 'updated_at')) {
+        $payload['updated_at'] = now();
+    }
+
+    DB::table('acesso_professor')->insert($payload);
 
     return redirect()->route('academia.acesso_professores')->with('success', 'Acesso de professor criado com sucesso.');
 })->name('academia.acesso_professores.store');
@@ -1976,23 +2175,41 @@ Route::get('/academia/acesso-professores/{id}/editar', function (int $id) {
     ]);
 })->name('academia.acesso_professores.edit');
 
-Route::put('/academia/acesso-professores/{id}', function (\Illuminate\Http\Request $request, int $id) {
+Route::put('/academia/acesso-professores/{id}', function (\Illuminate\Http\Request $request, int $id) use ($obterColunaEmailAcessoProfessor, $obterColunaSenhaAcessoProfessor) {
     $professor = DB::table('acesso_professor')->where('id', $id)->first();
     abort_if(!$professor, 404);
 
+    $colunaEmailProfessor = $obterColunaEmailAcessoProfessor();
+    $colunaSenhaProfessor = $obterColunaSenhaAcessoProfessor();
+    abort_if(!$colunaEmailProfessor, 500, 'Tabela acesso_professor sem coluna de email compativel.');
+    abort_if(!$colunaSenhaProfessor, 500, 'Tabela acesso_professor sem coluna de senha compativel.');
+
+    if (!$request->filled('email_encarregado') && $request->filled('email_professor')) {
+        $request->merge([
+            'email_encarregado' => $request->input('email_professor'),
+        ]);
+    }
+
     $dados = $request->validate([
-        'email_encarregado' => ['required', 'email', 'max:255', Rule::unique('acesso_professor', 'email_encarregado')->ignore($id)],
+        'email_encarregado' => ['required', 'email', 'max:255', Rule::unique('acesso_professor', $colunaEmailProfessor)->ignore($id)],
         'acesso' => ['required', 'in:ativo,inativo'],
         'password' => ['nullable', 'string', 'min:6'],
     ]);
 
     $update = [
-        'email_encarregado' => $dados['email_encarregado'],
-        'acesso' => $dados['acesso'],
-        'updated_at' => now(),
+        $colunaEmailProfessor => $dados['email_encarregado'],
     ];
+    if (Schema::hasColumn('acesso_professor', 'nome') && $request->filled('perfil_professor')) {
+        $update['nome'] = trim((string) $request->input('perfil_professor'));
+    }
+    if (Schema::hasColumn('acesso_professor', 'acesso')) {
+        $update['acesso'] = $dados['acesso'];
+    }
+    if (Schema::hasColumn('acesso_professor', 'updated_at')) {
+        $update['updated_at'] = now();
+    }
     if (!empty($dados['password'])) {
-        $update['password'] = Hash::make($dados['password']);
+        $update[$colunaSenhaProfessor] = $dados['password'];
     }
 
     DB::table('acesso_professor')->where('id', $id)->update($update);
@@ -2007,12 +2224,15 @@ Route::delete('/academia/acesso-professores/{id}', function (int $id) {
 })->name('academia.acesso_professores.destroy');
 
 
-Route::get('/database', function (\Illuminate\Http\Request $request) {
+Route::get('/database', function (\Illuminate\Http\Request $request) use ($obterPrimeiraColunaExistente) {
     $q = trim((string) $request->query('q', ''));
     $lista = strtolower(trim((string) $request->query('lista', '')));
     $resultados = collect();
     $listaRegistros = collect();
     $listaTitulo = null;
+    $colunaIdAluno = $obterPrimeiraColunaExistente('aluno', ['id', 'bi', 'bi_certidao', 'email']);
+    $colunaIdProfessor = $obterPrimeiraColunaExistente('professor', ['id', 'bi_passaporte', 'email']);
+    $colunaIdFuncionario = $obterPrimeiraColunaExistente('funcionario', ['bi_passaporte', 'id', 'email']);
 
     if (in_array($lista, ['aluno', 'professor', 'funcionario'], true)) {
         if ($lista === 'aluno' && Schema::hasTable('aluno')) {
@@ -2020,15 +2240,17 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
             $listaRegistros = DB::table('aluno')
                 ->orderBy('nome')
                 ->get()
-                ->map(function ($aluno) {
+                ->map(function ($aluno) use ($colunaIdAluno) {
                     return [
                         'tipo' => 'Aluno',
                         'tipo_key' => 'aluno',
-                        'id' => data_get($aluno, 'bi'),
+                        'id' => (string) data_get($aluno, $colunaIdAluno ?? 'id', ''),
                         'nome' => data_get($aluno, 'nome'),
                         'dados' => (array) $aluno,
                     ];
-                });
+                })
+                ->filter(fn ($item) => trim((string) data_get($item, 'id')) !== '')
+                ->values();
         }
 
         if ($lista === 'professor' && Schema::hasTable('professor')) {
@@ -2036,15 +2258,17 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
             $listaRegistros = DB::table('professor')
                 ->orderBy('nome')
                 ->get()
-                ->map(function ($professor) {
+                ->map(function ($professor) use ($colunaIdProfessor) {
                     return [
                         'tipo' => 'Professor',
                         'tipo_key' => 'professor',
-                        'id' => (string) data_get($professor, 'id'),
+                        'id' => (string) data_get($professor, $colunaIdProfessor ?? 'id', ''),
                         'nome' => data_get($professor, 'nome'),
                         'dados' => (array) $professor,
                     ];
-                });
+                })
+                ->filter(fn ($item) => trim((string) data_get($item, 'id')) !== '')
+                ->values();
         }
 
         if ($lista === 'funcionario' && Schema::hasTable('funcionario')) {
@@ -2052,15 +2276,17 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
             $listaRegistros = DB::table('funcionario')
                 ->orderBy('nome')
                 ->get()
-                ->map(function ($funcionario) {
+                ->map(function ($funcionario) use ($colunaIdFuncionario) {
                     return [
                         'tipo' => 'Funcionario',
                         'tipo_key' => 'funcionario',
-                        'id' => data_get($funcionario, 'bi_passaporte'),
+                        'id' => (string) data_get($funcionario, $colunaIdFuncionario ?? 'bi_passaporte', ''),
                         'nome' => data_get($funcionario, 'nome'),
                         'dados' => (array) $funcionario,
                     ];
-                });
+                })
+                ->filter(fn ($item) => trim((string) data_get($item, 'id')) !== '')
+                ->values();
         }
     }
 
@@ -2070,15 +2296,17 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
                 ->where('nome', 'like', "%{$q}%")
                 ->orderBy('nome')
                 ->get()
-                ->map(function ($aluno) {
+                ->map(function ($aluno) use ($colunaIdAluno) {
                     return [
                         'tipo' => 'Aluno',
                         'tipo_key' => 'aluno',
-                        'id' => data_get($aluno, 'bi'),
+                        'id' => (string) data_get($aluno, $colunaIdAluno ?? 'id', ''),
                         'nome' => data_get($aluno, 'nome'),
                         'dados' => (array) $aluno,
                     ];
-                });
+                })
+                ->filter(fn ($item) => trim((string) data_get($item, 'id')) !== '')
+                ->values();
 
             $resultados = $resultados->concat($alunos);
         }
@@ -2088,15 +2316,17 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
                 ->where('nome', 'like', "%{$q}%")
                 ->orderBy('nome')
                 ->get()
-                ->map(function ($professor) {
+                ->map(function ($professor) use ($colunaIdProfessor) {
                     return [
                         'tipo' => 'Professor',
                         'tipo_key' => 'professor',
-                        'id' => (string) data_get($professor, 'id'),
+                        'id' => (string) data_get($professor, $colunaIdProfessor ?? 'id', ''),
                         'nome' => data_get($professor, 'nome'),
                         'dados' => (array) $professor,
                     ];
-                });
+                })
+                ->filter(fn ($item) => trim((string) data_get($item, 'id')) !== '')
+                ->values();
 
             $resultados = $resultados->concat($professores);
         }
@@ -2106,15 +2336,17 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
                 ->where('nome', 'like', "%{$q}%")
                 ->orderBy('nome')
                 ->get()
-                ->map(function ($funcionario) {
+                ->map(function ($funcionario) use ($colunaIdFuncionario) {
                     return [
                         'tipo' => 'Funcionario',
                         'tipo_key' => 'funcionario',
-                        'id' => data_get($funcionario, 'bi_passaporte'),
+                        'id' => (string) data_get($funcionario, $colunaIdFuncionario ?? 'bi_passaporte', ''),
                         'nome' => data_get($funcionario, 'nome'),
                         'dados' => (array) $funcionario,
                     ];
-                });
+                })
+                ->filter(fn ($item) => trim((string) data_get($item, 'id')) !== '')
+                ->values();
 
             $resultados = $resultados->concat($funcionarios);
         }
@@ -2123,18 +2355,24 @@ Route::get('/database', function (\Illuminate\Http\Request $request) {
     return view('database', compact('q', 'resultados', 'lista', 'listaRegistros', 'listaTitulo'));
 })->name('database');
 
-Route::get('/database/{tipo}/{id}/editar', function (string $tipo, string $id) {
+Route::get('/database/{tipo}/{id}/editar', function (string $tipo, string $id) use ($obterPrimeiraColunaExistente) {
     $tipo = strtolower($tipo);
 
     if ($tipo === 'aluno') {
         abort_if(!Schema::hasTable('aluno'), 404);
-        $registro = DB::table('aluno')->where('bi', $id)->first();
+        $colunaIdAluno = $obterPrimeiraColunaExistente('aluno', ['id', 'bi', 'bi_certidao', 'email']);
+        abort_if(!$colunaIdAluno, 404);
+        $registro = DB::table('aluno')->where($colunaIdAluno, $id)->first();
     } elseif ($tipo === 'professor') {
         abort_if(!Schema::hasTable('professor'), 404);
-        $registro = DB::table('professor')->where('id', (int) $id)->first();
+        $colunaIdProfessor = $obterPrimeiraColunaExistente('professor', ['id', 'bi_passaporte', 'email']);
+        abort_if(!$colunaIdProfessor, 404);
+        $registro = DB::table('professor')->where($colunaIdProfessor, $id)->first();
     } elseif ($tipo === 'funcionario') {
         abort_if(!Schema::hasTable('funcionario'), 404);
-        $registro = DB::table('funcionario')->where('bi_passaporte', $id)->first();
+        $colunaIdFuncionario = $obterPrimeiraColunaExistente('funcionario', ['bi_passaporte', 'id', 'email']);
+        abort_if(!$colunaIdFuncionario, 404);
+        $registro = DB::table('funcionario')->where($colunaIdFuncionario, $id)->first();
     } else {
         abort(404);
     }
@@ -2144,34 +2382,52 @@ Route::get('/database/{tipo}/{id}/editar', function (string $tipo, string $id) {
     return view('database_edit', compact('tipo', 'registro', 'id'));
 })->name('database.edit');
 
-Route::put('/database/{tipo}/{id}', function (\Illuminate\Http\Request $request, string $tipo, string $id) {
+Route::put('/database/{tipo}/{id}', function (\Illuminate\Http\Request $request, string $tipo, string $id) use ($obterPrimeiraColunaExistente) {
     $tipo = strtolower($tipo);
 
     if ($tipo === 'aluno') {
         abort_if(!Schema::hasTable('aluno'), 404);
-        $registro = DB::table('aluno')->where('bi', $id)->first();
+        $colunaIdAluno = $obterPrimeiraColunaExistente('aluno', ['id', 'bi', 'bi_certidao', 'email']);
+        abort_if(!$colunaIdAluno, 404);
+        $registro = DB::table('aluno')->where($colunaIdAluno, $id)->first();
         abort_if(!$registro, 404);
+
+        $colunaDocumentoAluno = $obterPrimeiraColunaExistente('aluno', ['bi', 'bi_certidao']);
+        $colunaDescricaoAluno = $obterPrimeiraColunaExistente('aluno', ['descricao', 'descrição']);
+        $colunaContactoAlternativoAluno = $obterPrimeiraColunaExistente('aluno', ['contactoalternativo', 'contactoauternativo', 'contacto_alternativo']);
 
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:60'],
             'data_nascimento' => ['required', 'date'],
-            'sexo' => ['required', 'in:Masculino,Feminino'],
-            'bi' => ['required', 'string', 'max:21', Rule::unique('aluno', 'bi')->ignore($id, 'bi')],
             'nacionalidade' => ['required', 'string', 'max:20'],
             'encarregados' => ['required', 'string', 'max:40'],
             'turma' => ['nullable', 'string', 'max:80'],
             'desempenho' => ['nullable', 'numeric', 'between:0,20'],
-            'descricao' => ['nullable', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string', 'max:500'],
+            'idade' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'contactoencarregado' => ['nullable', 'digits_between:1,20'],
+            'contactoalternativo' => ['nullable', 'digits_between:1,20'],
         ]);
 
         $payload = [
             'nome' => trim((string) $dados['nome']),
             'data_nascimento' => $dados['data_nascimento'],
-            'sexo' => $dados['sexo'],
-            'bi' => trim((string) $dados['bi']),
             'nacionalidade' => trim((string) $dados['nacionalidade']),
             'encarregados' => trim((string) $dados['encarregados']),
         ];
+
+        if (Schema::hasColumn('aluno', 'idade')) {
+            $payload['idade'] = $dados['idade'] !== null && $dados['idade'] !== '' ? (int) $dados['idade'] : null;
+        }
+        if ($colunaDocumentoAluno && $request->filled('bi')) {
+            $payload[$colunaDocumentoAluno] = trim((string) $request->input('bi'));
+        }
+        if (Schema::hasColumn('aluno', 'contactoencarregado')) {
+            $payload['contactoencarregado'] = $request->filled('contactoencarregado') ? $request->input('contactoencarregado') : null;
+        }
+        if ($colunaContactoAlternativoAluno) {
+            $payload[$colunaContactoAlternativoAluno] = $request->filled('contactoalternativo') ? $request->input('contactoalternativo') : null;
+        }
 
         if (Schema::hasColumn('aluno', 'turma')) {
             $payload['turma'] = isset($dados['turma']) && trim((string) $dados['turma']) !== '' ? trim((string) $dados['turma']) : null;
@@ -2179,40 +2435,65 @@ Route::put('/database/{tipo}/{id}', function (\Illuminate\Http\Request $request,
         if (Schema::hasColumn('aluno', 'desempenho')) {
             $payload['desempenho'] = isset($dados['desempenho']) && $dados['desempenho'] !== '' ? $dados['desempenho'] : null;
         }
-        if (Schema::hasColumn('aluno', 'descricao')) {
-            $payload['descricao'] = isset($dados['descricao']) && trim((string) $dados['descricao']) !== '' ? trim((string) $dados['descricao']) : null;
+        if ($colunaDescricaoAluno) {
+            $payload[$colunaDescricaoAluno] = isset($dados['descricao']) && trim((string) $dados['descricao']) !== '' ? trim((string) $dados['descricao']) : null;
         }
 
-        DB::table('aluno')->where('bi', $id)->update($payload);
+        DB::table('aluno')->where($colunaIdAluno, $id)->update($payload);
     } elseif ($tipo === 'professor') {
         abort_if(!Schema::hasTable('professor'), 404);
-        $registro = DB::table('professor')->where('id', (int) $id)->first();
+        $colunaIdProfessor = $obterPrimeiraColunaExistente('professor', ['id', 'bi_passaporte', 'email']);
+        abort_if(!$colunaIdProfessor, 404);
+        $registro = DB::table('professor')->where($colunaIdProfessor, $id)->first();
         abort_if(!$registro, 404);
 
         $dados = $request->validate([
-            'nome' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('professor', 'email')->ignore((int) $id)],
-            'telefone' => ['required', 'string', 'max:50'],
-            'disciplina' => ['required', 'string', 'max:255'],
-            'password' => ['nullable', 'string', 'min:6'],
+            'nome' => ['required', 'string', 'max:60'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('professor', 'email')->ignore($id, $colunaIdProfessor)],
+            'contacto' => ['required', 'string', 'max:30'],
+            'turma' => ['required', 'string', 'max:50'],
+            'nacionalidade' => ['nullable', 'string', 'max:20'],
+            'bi_passaporte' => ['nullable', 'string', 'max:21'],
+            'formacao' => ['nullable', 'string', 'max:90'],
+            'nivel_academico' => ['nullable', 'string', 'max:25'],
+            'endereco' => ['nullable', 'string', 'max:50'],
         ]);
 
         $update = [
             'nome' => $dados['nome'],
             'email' => $dados['email'],
-            'telefone' => $dados['telefone'],
-            'disciplina' => $dados['disciplina'],
-            'updated_at' => now(),
+            'contacto' => $dados['contacto'],
+            'turma' => $dados['turma'],
         ];
-
-        if (!empty($dados['password'])) {
-            $update['password'] = Hash::make($dados['password']);
+        if (Schema::hasColumn('professor', 'nacionalidade')) {
+            $update['nacionalidade'] = $dados['nacionalidade'] ?? null;
+        }
+        if (Schema::hasColumn('professor', 'bi_passaporte') && !empty($dados['bi_passaporte'])) {
+            $update['bi_passaporte'] = $dados['bi_passaporte'];
+        }
+        if (Schema::hasColumn('professor', 'formação')) {
+            $update['formação'] = $dados['formacao'] ?? null;
+        } elseif (Schema::hasColumn('professor', 'formacao')) {
+            $update['formacao'] = $dados['formacao'] ?? null;
+        }
+        if (Schema::hasColumn('professor', 'nivel_academico')) {
+            $update['nivel_academico'] = $dados['nivel_academico'] ?? null;
+        }
+        if (Schema::hasColumn('professor', 'endereço')) {
+            $update['endereço'] = $dados['endereco'] ?? null;
+        } elseif (Schema::hasColumn('professor', 'endereco')) {
+            $update['endereco'] = $dados['endereco'] ?? null;
+        }
+        if (Schema::hasColumn('professor', 'updated_at')) {
+            $update['updated_at'] = now();
         }
 
-        DB::table('professor')->where('id', (int) $id)->update($update);
+        DB::table('professor')->where($colunaIdProfessor, $id)->update($update);
     } elseif ($tipo === 'funcionario') {
         abort_if(!Schema::hasTable('funcionario'), 404);
-        $registro = DB::table('funcionario')->where('bi_passaporte', $id)->first();
+        $colunaIdFuncionario = $obterPrimeiraColunaExistente('funcionario', ['bi_passaporte', 'id', 'email']);
+        abort_if(!$colunaIdFuncionario, 404);
+        $registro = DB::table('funcionario')->where($colunaIdFuncionario, $id)->first();
         abort_if(!$registro, 404);
 
         $regras = [
@@ -2220,7 +2501,7 @@ Route::put('/database/{tipo}/{id}', function (\Illuminate\Http\Request $request,
             'data_nascimento' => ['required', 'date'],
             'sexo' => ['required', 'in:Masculino,Femenino'],
             'nacionalidade' => ['required', 'string', 'max:20'],
-            'bi_passaporte' => ['required', 'string', 'max:21', Rule::unique('funcionario', 'bi_passaporte')->ignore($id, 'bi_passaporte')],
+            'bi_passaporte' => ['required', 'string', 'max:21', Rule::unique('funcionario', 'bi_passaporte')->ignore($id, $colunaIdFuncionario)],
             'contacto' => ['required', 'string', 'max:30'],
             'email' => ['required', 'email', 'max:35'],
             'formacao' => ['required', 'string', 'max:90'],
@@ -2231,19 +2512,40 @@ Route::put('/database/{tipo}/{id}', function (\Illuminate\Http\Request $request,
         ];
 
         if (Schema::hasColumn('funcionario', 'email')) {
-            $regras['email'][] = Rule::unique('funcionario', 'email')->ignore($id, 'bi_passaporte');
+            $regras['email'][] = Rule::unique('funcionario', 'email')->ignore($id, $colunaIdFuncionario);
         }
 
         $dados = $request->validate($regras);
 
         try {
-            $payload = $dados;
+            $payload = [
+                'nome' => $dados['nome'],
+                'data_nascimento' => $dados['data_nascimento'],
+                'sexo' => $dados['sexo'],
+                'nacionalidade' => $dados['nacionalidade'],
+                'bi_passaporte' => $dados['bi_passaporte'],
+                'contacto' => $dados['contacto'],
+                'email' => $dados['email'],
+                'nivel_academico' => $dados['nivel_academico'],
+                'funcao' => $dados['funcao'],
+                'departamento' => $dados['departamento'],
+            ];
+            if (Schema::hasColumn('funcionario', 'formação')) {
+                $payload['formação'] = $dados['formacao'];
+            } else {
+                $payload['formacao'] = $dados['formacao'];
+            }
+            if (Schema::hasColumn('funcionario', 'endereço')) {
+                $payload['endereço'] = $dados['endereco'];
+            } else {
+                $payload['endereco'] = $dados['endereco'];
+            }
 
             if (Schema::hasColumn('funcionario', 'updated_at')) {
                 $payload['updated_at'] = now();
             }
 
-            DB::table('funcionario')->where('bi_passaporte', $id)->update($payload);
+            DB::table('funcionario')->where($colunaIdFuncionario, $id)->update($payload);
         } catch (\Throwable $e) {
             report($e);
             return redirect()
@@ -2258,18 +2560,24 @@ Route::put('/database/{tipo}/{id}', function (\Illuminate\Http\Request $request,
     return redirect()->route('database', ['q' => $request->query('q', '')])->with('success', 'Registro atualizado com sucesso.');
 })->name('database.update');
 
-Route::delete('/database/{tipo}/{id}', function (string $tipo, string $id) {
+Route::delete('/database/{tipo}/{id}', function (string $tipo, string $id) use ($obterPrimeiraColunaExistente) {
     $tipo = strtolower($tipo);
 
     if ($tipo === 'aluno') {
         abort_if(!Schema::hasTable('aluno'), 404);
-        DB::table('aluno')->where('bi', $id)->delete();
+        $colunaIdAluno = $obterPrimeiraColunaExistente('aluno', ['id', 'bi', 'bi_certidao', 'email']);
+        abort_if(!$colunaIdAluno, 404);
+        DB::table('aluno')->where($colunaIdAluno, $id)->delete();
     } elseif ($tipo === 'professor') {
         abort_if(!Schema::hasTable('professor'), 404);
-        DB::table('professor')->where('id', (int) $id)->delete();
+        $colunaIdProfessor = $obterPrimeiraColunaExistente('professor', ['id', 'bi_passaporte', 'email']);
+        abort_if(!$colunaIdProfessor, 404);
+        DB::table('professor')->where($colunaIdProfessor, $id)->delete();
     } elseif ($tipo === 'funcionario') {
         abort_if(!Schema::hasTable('funcionario'), 404);
-        DB::table('funcionario')->where('bi_passaporte', $id)->delete();
+        $colunaIdFuncionario = $obterPrimeiraColunaExistente('funcionario', ['bi_passaporte', 'id', 'email']);
+        abort_if(!$colunaIdFuncionario, 404);
+        DB::table('funcionario')->where($colunaIdFuncionario, $id)->delete();
     } else {
         abort(404);
     }
@@ -2309,9 +2617,8 @@ Route::post('/register_aluno', function (\Illuminate\Http\Request $request) use 
 
     $dados = $request->validate([
         'nome' => ['required', 'string', 'max:60'],
+        'idade' => ['nullable', 'integer', 'min:0', 'max:99'],
         'data_nascimento' => ['required', 'date'],
-        'sexo' => ['required', 'in:Masculino,Feminino'],
-        'bi' => ['required', 'string', 'max:21'],
         'nacionalidade' => ['required', 'string', 'max:20'],
         'encarregados' => ['required', 'string', 'max:40'],
         'turma' => ['required', 'string', 'max:30'],
@@ -2324,22 +2631,6 @@ Route::post('/register_aluno', function (\Illuminate\Http\Request $request) use 
         return redirect()->route('register_aluno')
             ->withInput()
             ->with('error', 'Cadastro nao foi efetuado. A tabela aluno nao existe na base de dados ativa.');
-    }
-
-    $colunaDocumentoAluno = $obterPrimeiraColunaExistente('aluno', ['bi', 'bi_passaporte', 'documento', 'numero_documento']);
-    if (!$colunaDocumentoAluno) {
-        return redirect()->route('register_aluno')
-            ->withInput()
-            ->with('error', 'Cadastro nao foi efetuado. A tabela aluno nao possui coluna para BI/documento.');
-    }
-
-    $documentoNormalizado = trim((string) $dados['bi']);
-    $documentoDuplicado = DB::table('aluno')->where($colunaDocumentoAluno, $documentoNormalizado)->exists();
-
-    if ($documentoDuplicado) {
-        return redirect()->route('register_aluno')
-            ->withInput()
-            ->withErrors(['bi' => 'Este BI/documento ja esta registado.']);
     }
 
     try {
@@ -2356,14 +2647,14 @@ Route::post('/register_aluno', function (\Illuminate\Http\Request $request) use 
         $payload = [
             'nome' => trim($dados['nome']),
             'data_nascimento' => $dados['data_nascimento'],
-            'sexo' => $dados['sexo'],
             'nacionalidade' => trim($dados['nacionalidade']),
             'encarregados' => trim($dados['encarregados']),
             'contactoencarregado' => $dados['contactoencarregado'],
-            'contactoalternativo' => $dados['contactoalternativo'],
         ];
 
-        $payload[$colunaDocumentoAluno] = $documentoNormalizado;
+        if (Schema::hasColumn('aluno', 'idade')) {
+            $payload['idade'] = $dados['idade'] ?? null;
+        }
 
         if (Schema::hasColumn('aluno', 'turma')) {
             $payload['turma'] = (string) data_get($turmaRelacionada, $colunaNomeTurma);
@@ -2377,7 +2668,33 @@ Route::post('/register_aluno', function (\Illuminate\Http\Request $request) use 
             $payload['turma_id'] = $dados['id_turma'];
         }
 
-        foreach (['contactoencarregado', 'contactoalternativo', 'nacionalidade', 'encarregados', 'data_nascimento', 'sexo', 'nome'] as $coluna) {
+        if (Schema::hasColumn('aluno', 'turma_professor_id')) {
+            $colunaProfessorTurma = $obterPrimeiraColunaExistente($tabelaTurmas, ['professor_id', 'id_professor']);
+            $idProfessorTurma = null;
+
+            if ($colunaProfessorTurma) {
+                $idProfessorTurma = (int) data_get($turmaRelacionada, $colunaProfessorTurma);
+            }
+
+            if (!$idProfessorTurma && Schema::hasTable('professor')) {
+                $nomeProfessorTurma = trim((string) data_get($turmaRelacionada, 'professor', ''));
+                if ($nomeProfessorTurma !== '' && Schema::hasColumn('professor', 'nome')) {
+                    $professorTurma = DB::table('professor')
+                        ->whereRaw('LOWER(TRIM(nome)) = ?', [mb_strtolower($nomeProfessorTurma)])
+                        ->first();
+                    $idProfessorTurma = (int) data_get($professorTurma, 'id', 0);
+                }
+            }
+
+            $payload['turma_professor_id'] = $idProfessorTurma > 0 ? $idProfessorTurma : 0;
+        }
+
+        $colunaContactoAlternativo = $obterPrimeiraColunaExistente('aluno', ['contactoalternativo', 'contactoauternativo', 'contacto_alternativo']);
+        if ($colunaContactoAlternativo) {
+            $payload[$colunaContactoAlternativo] = $dados['contactoalternativo'];
+        }
+
+        foreach (['contactoencarregado', 'nacionalidade', 'encarregados', 'data_nascimento', 'sexo', 'nome', 'turma_professor_id'] as $coluna) {
             if (!Schema::hasColumn('aluno', $coluna)) {
                 unset($payload[$coluna]);
             }
@@ -2453,12 +2770,16 @@ Route::post('/register_professor', function (\Illuminate\Http\Request $request) 
         }
         if (Schema::hasColumn('professor', 'formacao')) {
             $payload['formacao'] = trim((string) $dados['formacao']);
+        } elseif (Schema::hasColumn('professor', 'formação')) {
+            $payload['formação'] = trim((string) $dados['formacao']);
         }
         if (Schema::hasColumn('professor', 'nivel_academico')) {
             $payload['nivel_academico'] = trim((string) $dados['nivel_academico']);
         }
         if (Schema::hasColumn('professor', 'endereco')) {
             $payload['endereco'] = trim((string) $dados['endereco']);
+        } elseif (Schema::hasColumn('professor', 'endereço')) {
+            $payload['endereço'] = trim((string) $dados['endereco']);
         }
         if (Schema::hasColumn('professor', 'turma')) {
             $payload['turma'] = trim((string) $dados['turma']);
@@ -2547,12 +2868,16 @@ Route::post('/register_funcionario', function (\Illuminate\Http\Request $request
         }
         if (Schema::hasColumn('funcionario', 'formacao')) {
             $payload['formacao'] = trim((string) $dados['formacao']);
+        } elseif (Schema::hasColumn('funcionario', 'formação')) {
+            $payload['formação'] = trim((string) $dados['formacao']);
         }
         if (Schema::hasColumn('funcionario', 'nivel_academico')) {
             $payload['nivel_academico'] = trim((string) $dados['nivel_academico']);
         }
         if (Schema::hasColumn('funcionario', 'endereco')) {
             $payload['endereco'] = trim((string) $dados['endereco']);
+        } elseif (Schema::hasColumn('funcionario', 'endereço')) {
+            $payload['endereço'] = trim((string) $dados['endereco']);
         }
         if (Schema::hasColumn('funcionario', 'funcao')) {
             $payload['funcao'] = trim((string) $dados['funcao']);

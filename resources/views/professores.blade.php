@@ -83,8 +83,9 @@
                         <th>ID</th>
                         <th>Nome</th>
                         <th>Email</th>
-                        <th>Telefone</th>
-                        <th>Cadastro</th>
+                        <th>Contacto</th>
+                        <th>Turma</th>
+                        <th>Formação</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -93,8 +94,9 @@
                             <td>{{ data_get($professor, 'id', '-') }}</td>
                             <td>{{ data_get($professor, 'nome', '-') }}</td>
                             <td>{{ data_get($professor, 'email', '-') }}</td>
-                            <td>{{ data_get($professor, 'telefone', '-') }}</td>
-                            <td>{{ data_get($professor, 'created_at', '-') }}</td>
+                            <td>{{ data_get($professor, 'contacto', data_get($professor, 'telefone', '-')) }}</td>
+                            <td>{{ data_get($professor, 'turma', '-') }}</td>
+                            <td>{{ data_get($professor, 'formação', data_get($professor, 'formacao', '-')) }}</td>
                         </tr>
                     @empty
                         <tr>

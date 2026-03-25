@@ -19,6 +19,14 @@
 
         .contacts { border-right: 1px solid #e8edf7; padding: 16px; background: #fbfcff; }
         .contacts h4 { margin: 0 0 12px; }
+        .contact-search {
+            width: 100%;
+            margin-bottom: 10px;
+            border: 1px solid #bfd1ff;
+            border-radius: 8px;
+            padding: 9px 10px;
+            font-size: 14px;
+        }
         .contact-list { display: flex; flex-direction: column; gap: 8px; }
         .contact-btn {
             text-align: left;
@@ -46,6 +54,7 @@
             box-shadow: 0 0 0 2px #fff;
         }
         .contact-email { font-weight: 600; display: block; }
+        .contact-name { font-weight: 700; display: block; }
         .contact-role { font-size: 12px; opacity: .85; }
 
         .conversation { display: flex; flex-direction: column; }
@@ -117,6 +126,7 @@
             <div class="chat-body">
                 <aside class="contacts">
                     <h4>Contatos</h4>
+                    <input type="text" id="contact-search" class="contact-search" placeholder="Pesquisar por nome...">
                     @if ($contatos->isEmpty())
                         <p class="notice">Nao ha outros usuarios cadastrados na tabela de acesso.</p>
                     @else
@@ -126,8 +136,10 @@
                                     type="button"
                                     class="contact-btn"
                                     data-email="{{ $contato->email }}"
+                                    data-nome="{{ mb_strtolower((string) data_get($contato, 'nome', '')) }}"
                                     data-role="{{ $contato->tipo }}"
                                 >
+                                    <span class="contact-name">{{ data_get($contato, 'nome', data_get($contato, 'email')) }}</span>
                                     <span class="contact-email">{{ $contato->email }}</span>
                                     <span class="contact-role">{{ ucfirst($contato->tipo) }}</span>
                                 </button>
@@ -158,6 +170,7 @@
         const messagesBox = document.getElementById('messages');
         const composer = document.getElementById('composer');
         const input = document.getElementById('message-input');
+        const contactSearch = document.getElementById('contact-search');
 
         let contatoAtual = null;
         let pollTimer = null;
@@ -285,10 +298,19 @@
                 }),
             });
 
-            if (resp.ok) {
-                input.value = '';
-                await carregarMensagens();
+            if (!resp.ok) {
+                let erro = 'Falhou ao enviar a mensagem.';
+                try {
+                    const body = await resp.json();
+                    if (body?.message) erro = body.message;
+                } catch (e) {}
+                alert(erro);
+                return false;
             }
+
+            input.value = '';
+            await carregarMensagens();
+            return true;
         }
 
         function selecionarContato(email) {
@@ -316,6 +338,18 @@
                 const btn = event.target.closest('.contact-btn');
                 if (!btn) return;
                 selecionarContato(btn.dataset.email);
+            });
+        }
+
+        if (contactSearch && contactList) {
+            contactSearch.addEventListener('input', () => {
+                const termo = contactSearch.value.trim().toLowerCase();
+                contactList.querySelectorAll('.contact-btn').forEach((btn) => {
+                    const email = (btn.dataset.email || '').toLowerCase();
+                    const nome = (btn.dataset.nome || '').toLowerCase();
+                    const mostrar = termo === '' || nome.includes(termo) || email.includes(termo);
+                    btn.style.display = mostrar ? '' : 'none';
+                });
             });
         }
 

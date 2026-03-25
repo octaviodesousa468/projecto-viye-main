@@ -59,6 +59,10 @@
             <div class="form-grid">
                 @if ($tipo === 'aluno')
                     <div class="input-group">
+                        <label>ID</label>
+                        <input type="text" value="{{ data_get($registro, 'id', '-') }}" readonly>
+                    </div>
+                    <div class="input-group">
                         <label>Nome</label>
                         <input type="text" name="nome" value="{{ old('nome', data_get($registro, 'nome')) }}" required>
                     </div>
@@ -67,15 +71,12 @@
                         <input type="date" name="data_nascimento" value="{{ old('data_nascimento', data_get($registro, 'data_nascimento')) }}" required>
                     </div>
                     <div class="input-group">
-                        <label>Sexo</label>
-                        <select name="sexo" required>
-                            <option value="Masculino" {{ old('sexo', data_get($registro, 'sexo')) === 'Masculino' ? 'selected' : '' }}>Masculino</option>
-                            <option value="Feminino" {{ old('sexo', data_get($registro, 'sexo')) === 'Feminino' ? 'selected' : '' }}>Feminino</option>
-                        </select>
+                        <label>Idade</label>
+                        <input type="number" name="idade" value="{{ old('idade', data_get($registro, 'idade')) }}" min="0" max="99">
                     </div>
                     <div class="input-group">
-                        <label>BI</label>
-                        <input type="text" name="bi" value="{{ old('bi', data_get($registro, 'bi')) }}" required>
+                        <label>Documento</label>
+                        <input type="text" name="bi" value="{{ old('bi', data_get($registro, 'bi', data_get($registro, 'bi_certidao'))) }}">
                     </div>
                     <div class="input-group">
                         <label>Nacionalidade</label>
@@ -95,7 +96,15 @@
                     </div>
                     <div class="input-group">
                         <label>Descricao</label>
-                        <input type="text" name="descricao" value="{{ old('descricao', data_get($registro, 'descricao')) }}" maxlength="255" placeholder="Descricao (opcional)">
+                        <input type="text" name="descricao" value="{{ old('descricao', data_get($registro, 'descricao', data_get($registro, 'descrição'))) }}" maxlength="500" placeholder="Descricao (opcional)">
+                    </div>
+                    <div class="input-group">
+                        <label>Contacto Encarregado</label>
+                        <input type="text" name="contactoencarregado" value="{{ old('contactoencarregado', data_get($registro, 'contactoencarregado')) }}">
+                    </div>
+                    <div class="input-group">
+                        <label>Contacto Alternativo</label>
+                        <input type="text" name="contactoalternativo" value="{{ old('contactoalternativo', data_get($registro, 'contactoalternativo', data_get($registro, 'contactoauternativo'))) }}">
                     </div>
                 @elseif ($tipo === 'professor')
                     <div class="input-group">
@@ -107,16 +116,32 @@
                         <input type="email" name="email" value="{{ old('email', data_get($registro, 'email')) }}" required>
                     </div>
                     <div class="input-group">
-                        <label>Telefone</label>
-                        <input type="text" name="telefone" value="{{ old('telefone', data_get($registro, 'telefone')) }}" required>
+                        <label>Contacto</label>
+                        <input type="text" name="contacto" value="{{ old('contacto', data_get($registro, 'contacto', data_get($registro, 'telefone'))) }}" required>
                     </div>
                     <div class="input-group">
-                        <label>Disciplina</label>
-                        <input type="text" name="disciplina" value="{{ old('disciplina', data_get($registro, 'disciplina')) }}" required>
+                        <label>Turma</label>
+                        <input type="text" name="turma" value="{{ old('turma', data_get($registro, 'turma')) }}" required>
                     </div>
                     <div class="input-group">
-                        <label>Nova password (opcional)</label>
-                        <input type="password" name="password" placeholder="Deixe vazio para manter">
+                        <label>BI/Passaporte</label>
+                        <input type="text" name="bi_passaporte" value="{{ old('bi_passaporte', data_get($registro, 'bi_passaporte')) }}">
+                    </div>
+                    <div class="input-group">
+                        <label>Nacionalidade</label>
+                        <input type="text" name="nacionalidade" value="{{ old('nacionalidade', data_get($registro, 'nacionalidade')) }}">
+                    </div>
+                    <div class="input-group">
+                        <label>Formacao</label>
+                        <input type="text" name="formacao" value="{{ old('formacao', data_get($registro, 'formacao', data_get($registro, 'formação'))) }}">
+                    </div>
+                    <div class="input-group">
+                        <label>Nivel academico</label>
+                        <input type="text" name="nivel_academico" value="{{ old('nivel_academico', data_get($registro, 'nivel_academico')) }}">
+                    </div>
+                    <div class="input-group">
+                        <label>Endereco</label>
+                        <input type="text" name="endereco" value="{{ old('endereco', data_get($registro, 'endereco', data_get($registro, 'endereço'))) }}">
                     </div>
                 @elseif ($tipo === 'funcionario')
                     <div class="input-group">
@@ -152,7 +177,7 @@
                     </div>
                     <div class="input-group">
                         <label>Formacao</label>
-                        <input type="text" name="formacao" value="{{ old('formacao', data_get($registro, 'formacao')) }}" maxlength="90" required>
+                        <input type="text" name="formacao" value="{{ old('formacao', data_get($registro, 'formacao', data_get($registro, 'formação'))) }}" maxlength="90" required>
                     </div>
                     <div class="input-group">
                         <label>Nivel academico</label>
@@ -160,7 +185,7 @@
                     </div>
                     <div class="input-group">
                         <label>Endereco</label>
-                        <input type="text" name="endereco" value="{{ old('endereco', data_get($registro, 'endereco')) }}" maxlength="50" required>
+                        <input type="text" name="endereco" value="{{ old('endereco', data_get($registro, 'endereco', data_get($registro, 'endereço'))) }}" maxlength="50" required>
                     </div>
                     <div class="input-group">
                         <label>Funcao</label>

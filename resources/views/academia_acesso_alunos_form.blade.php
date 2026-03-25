@@ -43,7 +43,7 @@
                 @if ($isEdit)
                     <div class="input-group">
                         <label>Email do Encarregado</label>
-                        <input type="email" name="email_encarregado" value="{{ old('email_encarregado', data_get($aluno, 'email_encarregado')) }}">
+                        <input type="email" name="email_encarregado" value="{{ old('email_encarregado', data_get($aluno, 'email_encarregado', data_get($aluno, 'email'))) }}">
                     </div>
                     <div class="input-group">
                         <label>Status de Acesso</label>
@@ -72,7 +72,7 @@
                         <option value="">Seleciona um aluno</option>
                         @foreach(($perfisAluno ?? collect()) as $perfil)
                             @php $nomeAluno = (string) data_get($perfil, 'nome', ''); @endphp
-                            <option value="{{ $nomeAluno }}" {{ old('perfil_aluno', data_get($aluno, 'perfil_aluno')) === $nomeAluno ? 'selected' : '' }}>
+                            <option value="{{ $nomeAluno }}" {{ old('perfil_aluno') === $nomeAluno ? 'selected' : '' }}>
                                 {{ $nomeAluno }}
                             </option>
                         @endforeach

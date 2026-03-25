@@ -81,31 +81,33 @@
             <table class="table">
                 <thead>
                     <tr>
+                        <th>ID</th>
                         <th>Nome</th>
+                        <th>Idade</th>
                         <th>Data Nascimento</th>
-                        <th>Sexo</th>
-                        <th>BI</th>
                         <th>Nacionalidade</th>
-                        <th>Encarregados</th>
+                        <th>Turma</th>
+                        <th>Contacto Encarregado</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($alunos as $aluno)
                         <tr>
+                            <td>{{ data_get($aluno, 'id', '-') }}</td>
                             <td>
-                                <a href="{{ route('database.edit', ['tipo' => 'aluno', 'id' => data_get($aluno, 'bi')]) }}" style="font-weight:600; color:#0b2447; text-decoration:underline;">
+                                <a href="{{ route('database.edit', ['tipo' => 'aluno', 'id' => data_get($aluno, 'id')]) }}" style="font-weight:600; color:#0b2447; text-decoration:underline;">
                                     {{ data_get($aluno, 'nome', '-') }}
                                 </a>
                             </td>
+                            <td>{{ data_get($aluno, 'idade', '-') }}</td>
                             <td>{{ data_get($aluno, 'data_nascimento', '-') }}</td>
-                            <td>{{ data_get($aluno, 'sexo', '-') }}</td>
-                            <td>{{ data_get($aluno, 'bi', '-') }}</td>
                             <td>{{ data_get($aluno, 'nacionalidade', '-') }}</td>
-                            <td>{{ data_get($aluno, 'encarregados', '-') }}</td>
+                            <td>{{ data_get($aluno, 'turma', '-') }}</td>
+                            <td>{{ data_get($aluno, 'contactoencarregado', '-') }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" style="text-align:center;">Sem alunos cadastrados.</td>
+                            <td colspan="7" style="text-align:center;">Sem alunos cadastrados.</td>
                         </tr>
                     @endforelse
                 </tbody>

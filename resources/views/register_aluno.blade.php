@@ -102,17 +102,8 @@
                 </div>
 
                 <div class="input-group">
-                    <label>Sexo</label>
-                    <select name="sexo" required>
-                        <option value="">Selecione</option>
-                        <option value="Masculino" {{ old('sexo') === 'Masculino' ? 'selected' : '' }}>Masculino</option>
-                        <option value="Feminino" {{ old('sexo') === 'Feminino' ? 'selected' : '' }}>Feminino</option>
-                    </select>
-                </div>
-
-                <div class="input-group">
-                    <label>BI</label>
-                    <input type="text" name="bi" value="{{ old('bi') }}" maxlength="21" required placeholder="Digite o BI">
+                    <label>Idade</label>
+                    <input type="number" name="idade" value="{{ old('idade') }}" min="0" max="99" placeholder="Digite a idade">
                 </div>
 
                 <div class="input-group">
@@ -178,7 +169,6 @@
     </script>
 </body>
 </html>
-
 
 
 

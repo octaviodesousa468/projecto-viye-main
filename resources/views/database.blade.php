@@ -128,12 +128,16 @@
                                 </td>
                                 <td>
                                     <div class="action-wrap">
-                                        <a class="btn edit" href="{{ route('database.edit', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}">Editar</a>
-                                        <form method="POST" action="{{ route('database.destroy', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}" onsubmit="return confirm('Tem certeza que deseja eliminar este registro?');">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="btn delete">Eliminar</button>
-                                        </form>
+                                        @if (trim((string) data_get($item, 'id', '')) !== '')
+                                            <a class="btn edit" href="{{ route('database.edit', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}">Editar</a>
+                                            <form method="POST" action="{{ route('database.destroy', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}" onsubmit="return confirm('Tem certeza que deseja eliminar este registro?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn delete">Eliminar</button>
+                                            </form>
+                                        @else
+                                            <button type="button" class="btn" disabled>Sem ID</button>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>
@@ -182,12 +186,16 @@
                                 </td>
                                 <td>
                                     <div class="action-wrap">
-                                        <a class="btn edit" href="{{ route('database.edit', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}">Editar</a>
-                                        <form method="POST" action="{{ route('database.destroy', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}" onsubmit="return confirm('Tem certeza que deseja eliminar este registro?');">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="btn delete">Eliminar</button>
-                                        </form>
+                                        @if (trim((string) data_get($item, 'id', '')) !== '')
+                                            <a class="btn edit" href="{{ route('database.edit', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}">Editar</a>
+                                            <form method="POST" action="{{ route('database.destroy', ['tipo' => data_get($item, 'tipo_key'), 'id' => data_get($item, 'id')]) }}" onsubmit="return confirm('Tem certeza que deseja eliminar este registro?');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn delete">Eliminar</button>
+                                            </form>
+                                        @else
+                                            <button type="button" class="btn" disabled>Sem ID</button>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>

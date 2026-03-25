@@ -45,7 +45,7 @@
             <h4>Lista de Professores</h4>
             <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:12px;">
                 <form method="GET" action="{{ route('academia.acesso_professores') }}" style="display:flex; gap:8px;">
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Pesquisar por email ou status..." style="padding:8px 10px; border:1px solid #ccc; border-radius:6px;">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Pesquisar por nome, email ou status..." style="padding:8px 10px; border:1px solid #ccc; border-radius:6px;">
                     <button type="submit" class="btn edit">Pesquisar</button>
                 </form>
                 <a href="{{ route('academia.acesso_professores.create') }}" class="btn edit">+ Criar Acesso</a>
@@ -54,6 +54,7 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Professor</th>
                         <th>Email do Professor</th>
                         <th>Status Acesso</th>
                         <th>Criado em</th>
@@ -64,6 +65,7 @@
                     @forelse ($professores as $professor)
                         <tr>
                             <td>{{ data_get($professor, 'id', '-') }}</td>
+                            <td>{{ data_get($professor, 'nome_professor', data_get($professor, 'nome', '-')) }}</td>
                             <td>{{ data_get($professor, 'email_professor', '-') }}</td>
                             <td>{{ data_get($professor, 'acesso', '-') }}</td>
                             <td>{{ data_get($professor, 'created_at', '-') }}</td>
@@ -78,7 +80,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4" style="text-align:center;">Sem professores cadastrados.</td>
+                            <td colspan="6" style="text-align:center;">Sem acessos de professor cadastrados.</td>
                         </tr>
                     @endforelse
                 </tbody>
